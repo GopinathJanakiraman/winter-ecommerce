@@ -27,6 +27,10 @@ import org.hibernate.type.SqlTypes;
 
 
 
+/**
+ * An order with a UUID identity and owned line items.
+ * The version field enables optimistic locking for concurrent updates.
+ */
 @Entity
 @Table(name = "orders")
 public class Order {

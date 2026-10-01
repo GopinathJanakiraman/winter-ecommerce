@@ -11,6 +11,9 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+/**
+ * A line item owned by an order; its subtotal is quantity multiplied by unit price.
+ */
 @Entity
 @Table(name = "order_items")
 public class OrderItem {

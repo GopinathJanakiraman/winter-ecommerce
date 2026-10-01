@@ -24,6 +24,9 @@ import com.winter.ecommerce.entity.OrderItem;
 import com.winter.ecommerce.entity.OrderStatus;
 import com.winter.ecommerce.repository.OrderRepository;
 
+/**
+ * REST operations for creating, querying, updating, and cancelling orders.
+ */
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
@@ -34,6 +37,9 @@ public class OrderController {
 		this.orderRepository = orderRepository;
 	}
 
+	/**
+	 * Lists orders, optionally filtering by status, customer ID, or both.
+	 */
 	@GetMapping
 	@Transactional(readOnly = true)
 	public List<OrderResponse> getOrders(
@@ -62,6 +68,9 @@ public class OrderController {
 				.orElseGet(() -> ResponseEntity.notFound().build());
 	}
 
+	/**
+	 * Cancels an order only while it is pending; returns 409 for other statuses.
+	 */
 	@PostMapping("/{id}/cancel")
 	@Transactional
 	public ResponseEntity<?> cancelOrder(@PathVariable UUID id) {
@@ -78,6 +87,9 @@ public class OrderController {
 				.orElseGet(() -> ResponseEntity.notFound().build());
 	}
 
+	/**
+	 * Creates an order, defaulting its status to pending and calculating totals.
+	 */
 	@PostMapping
 	@Transactional
 	public ResponseEntity<?> createOrder(@RequestBody OrderRequest request) {
@@ -103,6 +115,9 @@ public class OrderController {
 		return ResponseEntity.created(location).body(response);
 	}
 
+	/**
+	 * Replaces the order's customer and items, and updates its status when supplied.
+	 */
 	@PutMapping("/{id}")
 	@Transactional
 	public ResponseEntity<?> updateOrder(
@@ -136,6 +151,9 @@ public class OrderController {
 		return ResponseEntity.noContent().build();
 	}
 
+	/**
+	 * Replaces all child items and recalculates the order total from their subtotals.
+	 */
 	private static void replaceItems(Order order, List<OrderItemRequest> requests) {
 		order.getItems().clear();
 		for (OrderItemRequest request : requests) {

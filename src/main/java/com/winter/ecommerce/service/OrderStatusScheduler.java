@@ -11,6 +11,9 @@ import com.winter.ecommerce.entity.Order;
 import com.winter.ecommerce.entity.OrderStatus;
 import com.winter.ecommerce.repository.OrderRepository;
 
+/**
+ * Advances pending orders automatically while the application is running.
+ */
 @Component
 public class OrderStatusScheduler {
 
@@ -20,6 +23,10 @@ public class OrderStatusScheduler {
 		this.orderRepository = orderRepository;
 	}
 
+	/**
+	 * Moves every pending order to processing and records a common update time.
+	 * Runs five minutes after startup and every five minutes thereafter.
+	 */
 	@Scheduled(fixedRate = 300_000, initialDelay = 300_000)
 	@Transactional
 	public void processPendingOrders() {
