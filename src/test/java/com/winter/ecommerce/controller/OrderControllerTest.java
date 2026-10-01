@@ -3,6 +3,7 @@ package com.winter.ecommerce.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -16,9 +17,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.winter.ecommerce.entity.Order;
+import com.winter.ecommerce.dto.OrderItemResponse;
+import com.winter.ecommerce.dto.OrderRequest;
+import com.winter.ecommerce.dto.OrderResponse;
 import com.winter.ecommerce.entity.OrderStatus;
-import com.winter.ecommerce.repository.OrderRepository;
+import com.winter.ecommerce.service.OrderNotCancellableException;
+import com.winter.ecommerce.service.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +37,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class OrderControllerTest {
 
 	@Mock
-	private OrderRepository orderRepository;
+	private OrderService orderService;
 
 	@InjectMocks
 	private OrderController orderController;
@@ -42,24 +46,15 @@ class OrderControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		mockMvc = MockMvcBuilders.standaloneSetup(orderController).build();
+		mockMvc = MockMvcBuilders.standaloneSetup(orderController)
+				.setControllerAdvice(new ApiExceptionHandler())
+				.build();
 	}
 
 	@Test
-	void getsOrdersWithoutFilters() throws Exception {
-		when(orderRepository.findAll()).thenReturn(List.of(order(OrderStatus.PENDING)));
-
-		mockMvc.perform(get("/api/orders"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[0].status").value("PENDING"));
-
-		verify(orderRepository).findAll();
-	}
-
-	@Test
-	void filtersOrdersByStatusAndCustomer() throws Exception {
-		when(orderRepository.findAllByStatusAndCustomerId(OrderStatus.PROCESSING, 42))
-				.thenReturn(List.of(order(OrderStatus.PROCESSING)));
+	void getsOrdersAndPassesOptionalFiltersToService() throws Exception {
+		OrderResponse response = order(OrderStatus.PROCESSING);
+		when(orderService.findOrders(OrderStatus.PROCESSING, 42)).thenReturn(List.of(response));
 
 		mockMvc.perform(get("/api/orders")
 						.param("status", "PROCESSING")
@@ -67,72 +62,61 @@ class OrderControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].customerId").value(42));
 
-		verify(orderRepository).findAllByStatusAndCustomerId(OrderStatus.PROCESSING, 42);
+		verify(orderService).findOrders(OrderStatus.PROCESSING, 42);
 	}
 
 	@Test
-	void filtersOrdersByStatusOnly() throws Exception {
-		when(orderRepository.findAllByStatus(OrderStatus.PENDING))
-				.thenReturn(List.of(order(OrderStatus.PENDING)));
+	void listsOrdersWithoutFilters() throws Exception {
+		when(orderService.findOrders(null, null)).thenReturn(List.of(order(OrderStatus.PENDING)));
 
-		mockMvc.perform(get("/api/orders").param("status", "PENDING"))
-				.andExpect(status().isOk());
-
-		verify(orderRepository).findAllByStatus(OrderStatus.PENDING);
-	}
-
-	@Test
-	void filtersOrdersByCustomerOnly() throws Exception {
-		when(orderRepository.findAllByCustomerId(42)).thenReturn(List.of(order(OrderStatus.PENDING)));
-
-		mockMvc.perform(get("/api/orders").param("customerId", "42"))
-				.andExpect(status().isOk());
-
-		verify(orderRepository).findAllByCustomerId(42);
-	}
-
-	@Test
-	void getsOrderAndReturnsNotFoundWhenMissing() throws Exception {
-		Order found = order(OrderStatus.PENDING);
-		when(orderRepository.findById(found.getId())).thenReturn(Optional.of(found));
-
-		mockMvc.perform(get("/api/orders/{id}", found.getId()))
+		mockMvc.perform(get("/api/orders"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.id").value(found.getId().toString()));
+				.andExpect(jsonPath("$[0].status").value("PENDING"));
 
-		when(orderRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
+		verify(orderService).findOrders(null, null);
+	}
+
+	@Test
+	void getsOrderOrReturnsNotFound() throws Exception {
+		OrderResponse response = order(OrderStatus.PENDING);
+		when(orderService.findOrder(response.id())).thenReturn(Optional.of(response));
+
+		mockMvc.perform(get("/api/orders/{id}", response.id()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(response.id().toString()));
+
+		when(orderService.findOrder(any(UUID.class))).thenReturn(Optional.empty());
 		mockMvc.perform(get("/api/orders/{id}", UUID.randomUUID()))
 				.andExpect(status().isNotFound());
 	}
 
 	@Test
-	void cancelsPendingOrder() throws Exception {
-		Order pending = order(OrderStatus.PENDING);
-		when(orderRepository.findById(pending.getId())).thenReturn(Optional.of(pending));
-		when(orderRepository.save(pending)).thenReturn(pending);
+	void cancelsOrderOrReturnsNotFound() throws Exception {
+		OrderResponse response = order(OrderStatus.CANCELLED);
+		when(orderService.cancelOrder(response.id())).thenReturn(Optional.of(response));
 
-		mockMvc.perform(post("/api/orders/{id}/cancel", pending.getId()))
+		mockMvc.perform(post("/api/orders/{id}/cancel", response.id()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("CANCELLED"));
-	}
 
-	@Test
-	void cannotCancelNonPendingOrder() throws Exception {
-		Order processing = order(OrderStatus.PROCESSING);
-		when(orderRepository.findById(processing.getId())).thenReturn(Optional.of(processing));
-
-		mockMvc.perform(post("/api/orders/{id}/cancel", processing.getId()))
-				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Only pending orders can be cancelled."));
-
-		when(orderRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
+		when(orderService.cancelOrder(any(UUID.class))).thenReturn(Optional.empty());
 		mockMvc.perform(post("/api/orders/{id}/cancel", UUID.randomUUID()))
 				.andExpect(status().isNotFound());
 	}
 
 	@Test
-	void createsOrderWithCalculatedItemTotals() throws Exception {
-		when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> invocation.getArgument(0));
+	void returnsConflictWhenOrderCannotBeCancelled() throws Exception {
+		when(orderService.cancelOrder(any(UUID.class))).thenThrow(new OrderNotCancellableException());
+
+		mockMvc.perform(post("/api/orders/{id}/cancel", UUID.randomUUID()))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Only pending orders can be cancelled."));
+	}
+
+	@Test
+	void createsOrder() throws Exception {
+		OrderResponse response = order(OrderStatus.PENDING);
+		when(orderService.createOrder(any(OrderRequest.class))).thenReturn(response);
 		String request = """
 				{"customerId":42,"items":[{"productId":7,"productName":"Widget","quantity":2,"unitPrice":12.50}]}
 				""";
@@ -141,47 +125,52 @@ class OrderControllerTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(request))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.status").value("PENDING"))
-				.andExpect(jsonPath("$.totalAmount").value(25.0))
-				.andExpect(jsonPath("$.items[0].subtotal").value(25.0));
+				.andExpect(jsonPath("$.id").value(response.id().toString()))
+				.andExpect(jsonPath("$.status").value("PENDING"));
 	}
 
 	@Test
-	void rejectsInvalidOrderRequests() throws Exception {
+	void returnsBadRequestForInvalidOrder() throws Exception {
 		mockMvc.perform(post("/api/orders")
 						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"items\":[]}"))
+						.content("""
+								{"customerId":null,"items":[{"productId":7,"productName":"Widget","quantity":1,"unitPrice":1}]}
+								"""))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("customerId is required."));
 
-		mockMvc.perform(post("/api/orders")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"customerId\":42,\"items\":[]}"))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.message").value("At least one order item is required."));
-
-		mockMvc.perform(post("/api/orders")
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("{\"customerId\":42,\"items\":[{\"productId\":7,\"productName\":\"Widget\",\"quantity\":0,\"unitPrice\":1}]}"))
-				.andExpect(status().isBadRequest());
+		verifyNoInteractions(orderService);
 	}
 
 	@Test
-	void updatesOrderAndReturnsNotFoundWhenMissing() throws Exception {
-		Order existing = order(OrderStatus.PENDING);
-		when(orderRepository.findById(existing.getId())).thenReturn(Optional.of(existing));
-		when(orderRepository.save(existing)).thenReturn(existing);
+	void returnsBadRequestForInvalidOrderItem() throws Exception {
+		mockMvc.perform(post("/api/orders")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"customerId":42,"items":[{"productId":7,"productName":"Widget","quantity":0,"unitPrice":1}]}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("quantity must be positive."));
+
+		verifyNoInteractions(orderService);
+	}
+
+	@Test
+	void updatesOrderOrReturnsNotFound() throws Exception {
+		UUID id = UUID.randomUUID();
+		OrderResponse response = order(OrderStatus.PROCESSING);
+		when(orderService.updateOrder(any(UUID.class), any(OrderRequest.class))).thenReturn(Optional.of(response));
 		String request = """
 				{"customerId":42,"status":"PROCESSING","items":[{"productId":7,"productName":"Widget","quantity":1,"unitPrice":5.00}]}
 				""";
 
-		mockMvc.perform(put("/api/orders/{id}", existing.getId())
+		mockMvc.perform(put("/api/orders/{id}", id)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(request))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("PROCESSING"));
 
-		when(orderRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
+		when(orderService.updateOrder(any(UUID.class), any(OrderRequest.class))).thenReturn(Optional.empty());
 		mockMvc.perform(put("/api/orders/{id}", UUID.randomUUID())
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(request))
@@ -191,25 +180,27 @@ class OrderControllerTest {
 	@Test
 	void deletesOrderOrReturnsNotFound() throws Exception {
 		UUID id = UUID.randomUUID();
-		when(orderRepository.existsById(id)).thenReturn(true);
+		when(orderService.deleteOrder(id)).thenReturn(true);
 
 		mockMvc.perform(delete("/api/orders/{id}", id))
 				.andExpect(status().isNoContent());
 
-		when(orderRepository.existsById(any(UUID.class))).thenReturn(false);
+		when(orderService.deleteOrder(any(UUID.class))).thenReturn(false);
 		mockMvc.perform(delete("/api/orders/{id}", UUID.randomUUID()))
 				.andExpect(status().isNotFound());
 	}
 
-	private static Order order(OrderStatus status) {
-		Order order = new Order();
-		order.setId(UUID.randomUUID());
-		order.setCustomerId(42);
-		order.setStatus(status);
-		order.setCreatedAt(Instant.now());
-		order.setUpdatedAt(Instant.now());
-		order.setTotalAmount(BigDecimal.ZERO);
-		order.setVersion(0L);
-		return order;
+	private static OrderResponse order(OrderStatus status) {
+		return new OrderResponse(
+				UUID.randomUUID(),
+				42,
+				List.of(new OrderItemResponse(
+						UUID.randomUUID(), 7, "Widget", 2,
+						new BigDecimal("12.50"), new BigDecimal("25.00"))),
+				new BigDecimal("25.00"),
+				status,
+				Instant.now(),
+				Instant.now(),
+				0L);
 	}
 }

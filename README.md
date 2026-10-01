@@ -10,19 +10,34 @@ flowchart LR
 
     subgraph App[Spring Boot application]
         Controllers[CustomerController<br/>OrderController]
+        Services[CustomerService / OrderService<br/>interfaces]
+        Implementations[CustomerServiceImpl / OrderServiceImpl<br/>business rules and transactions]
         Repositories[Spring Data repositories]
         Entities[Customer<br/>Order<br/>OrderItem]
         Scheduler[OrderStatusScheduler<br/>every 5 minutes]
-        Controllers --> Repositories
+        Controllers --> Services
+        Services --> Implementations
+        Implementations --> Repositories
         Repositories --> Entities
-        Scheduler --> Repositories
+        Scheduler --> OrderSvc[OrderService]
     end
 
     Repositories -->|JPA / Hibernate| DB[(MySQL)]
-    Scheduler -->|PENDING → PROCESSING| Entities
+    OrderSvc --> Implementations
 ```
 
 `Order` contains a collection of `OrderItem` records. The scheduler runs five minutes after application startup and then every five minutes, moving all pending orders to processing and refreshing their `updatedAt` timestamp.
+
+## Application layers
+
+- **Controllers** handle HTTP routing, request parameters, bean-validated request bodies, and HTTP response codes. They delegate application work to service interfaces.
+- **DTOs** define the request and response shapes exposed by the API.
+- **Services** define customer and order use cases. Their `impl` classes contain business rules, order calculations, status transitions, and transaction boundaries. Spring's `@Validated` and Jakarta Bean Validation constraints also protect service method inputs.
+- **Repositories** provide persistence operations through Spring Data JPA.
+- **Entities** represent the persisted customer and order data.
+- **Scheduler** triggers the order-processing use case through `OrderService`; it does not access the repository directly.
+
+Depending on service interfaces keeps controllers and the scheduler decoupled from persistence details and makes business logic independently testable.
 
 ## Background order status scheduler
 
