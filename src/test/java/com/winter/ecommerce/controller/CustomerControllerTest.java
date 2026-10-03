@@ -1,10 +1,15 @@
 package com.winter.ecommerce.controller;
 
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.Optional;
+
+import com.winter.ecommerce.entity.Customer;
 import com.winter.ecommerce.service.CustomerService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,5 +50,15 @@ class CustomerControllerTest {
 				.andExpect(jsonPath("$.message").value("email must be a valid email address."));
 
 		verifyNoInteractions(customerService);
+	}
+
+	@Test
+	void returnsCustomerResponseFromEntity() throws Exception {
+		when(customerService.findCustomer(7L)).thenReturn(Optional.of(new Customer("Alex Morgan", "alex@example.com")));
+
+		mockMvc.perform(get("/api/customers/7"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value("Alex Morgan"))
+				.andExpect(jsonPath("$.email").value("alex@example.com"));
 	}
 }

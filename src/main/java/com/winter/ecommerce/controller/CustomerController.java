@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import com.winter.ecommerce.dto.CustomerRequest;
-import com.winter.ecommerce.entity.Customer;
+import com.winter.ecommerce.dto.CustomerResponse;
 import com.winter.ecommerce.service.CustomerService;
 import jakarta.validation.Valid;
 
@@ -33,32 +33,36 @@ public class CustomerController {
 	}
 
 	@GetMapping
-	public List<Customer> getCustomers() {
-		return customerService.findCustomers();
+	public List<CustomerResponse> getCustomers() {
+		return customerService.findCustomers().stream()
+				.map(CustomerResponse::from)
+				.toList();
 	}
 
 	@GetMapping("/{id}")
-	public ResponseEntity<Customer> getCustomer(@PathVariable Long id) {
+	public ResponseEntity<CustomerResponse> getCustomer(@PathVariable Long id) {
 		return customerService.findCustomer(id)
+				.map(CustomerResponse::from)
 				.map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.notFound().build());
 	}
 
 	@PostMapping
-	public ResponseEntity<Customer> createCustomer(@Valid @RequestBody CustomerRequest request) {
-		Customer customer = customerService.createCustomer(request);
+	public ResponseEntity<CustomerResponse> createCustomer(@Valid @RequestBody CustomerRequest request) {
+		CustomerResponse customer = CustomerResponse.from(customerService.createCustomer(request));
 		URI location = ServletUriComponentsBuilder.fromCurrentRequest()
 				.path("/{id}")
-				.buildAndExpand(customer.getId())
+				.buildAndExpand(customer.id())
 				.toUri();
 		return ResponseEntity.created(location).body(customer);
 	}
 
 	@PutMapping("/{id}")
-	public ResponseEntity<Customer> updateCustomer(
+	public ResponseEntity<CustomerResponse> updateCustomer(
 			@PathVariable Long id,
 			@Valid @RequestBody CustomerRequest request) {
 		return customerService.updateCustomer(id, request)
+				.map(CustomerResponse::from)
 				.map(ResponseEntity::ok)
 				.orElseGet(() -> ResponseEntity.notFound().build());
 	}
